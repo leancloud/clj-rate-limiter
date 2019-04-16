@@ -191,7 +191,6 @@
                                         too-many-in-interval?
                                         (>= total
                                             (* flood-threshold max-in-interval)))
-                               ;; mark flood request
                                (swap! flood-cache assoc id true)
                                true)
                   time-since-last-req (when (and min-difference last-req)
