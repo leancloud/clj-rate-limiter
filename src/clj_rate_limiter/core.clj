@@ -176,34 +176,34 @@
                   stamp (System/nanoTime)
                   now (System/currentTimeMillis)
                   key (format "%s-%s" namespace id)
-                  before (- now interval)]
-              (let [exec-ret (exec-batch redis
-                                         pool
-                                         key
-                                         stamp
-                                         before
-                                         now
-                                         expire-secs
-                                         min-difference)
-                    [total rs-total first-req last-req] (match-exec-ret exec-ret min-difference)
-                    too-many-in-interval? (>= total max-in-interval)
-                    flood-req? (and flood-threshold
-                                    too-many-in-interval?
-                                    (>= total
-                                        (* flood-threshold max-in-interval)))
-                    time-since-last-req (when (and min-difference last-req)
-                                          (- now (Long/valueOf ^String last-req)))]
-                (when flood-req?
-                  (swap! flood-cache
-                         assoc id true))
-                (let [ret ((complement pos?)
-                            (calc-result-in-millis now
-                                                   (when first-req
-                                                     (Long/valueOf ^String first-req))
-                                                   too-many-in-interval?
-                                                   time-since-last-req
-                                                   min-difference interval))]
-                  {:result ret :ts stamp :current total :total (+ total rs-total)})))
+                  before (- now interval)
+                  exec-ret (exec-batch redis
+                                       pool
+                                       key
+                                       stamp
+                                       before
+                                       now
+                                       expire-secs
+                                       min-difference)
+                  [total rs-total first-req last-req] (match-exec-ret exec-ret min-difference)
+                  too-many-in-interval? (>= total max-in-interval)
+                  flood-req? (when (and flood-threshold
+                                        too-many-in-interval?
+                                        (>= total
+                                            (* flood-threshold max-in-interval)))
+                               ;; mark flood request
+                               (swap! flood-cache assoc id true)
+                               true)
+                  time-since-last-req (when (and min-difference last-req)
+                                        (- now (Long/valueOf ^String last-req)))
+                  ret ((complement pos?)
+                        (calc-result-in-millis now
+                                               (when first-req
+                                                 (Long/valueOf ^String first-req))
+                                               too-many-in-interval?
+                                               time-since-last-req
+                                               min-difference interval))]
+              {:result ret :flood-request? flood-req? :ts stamp :current total :total (+ total rs-total)})
             (let [flood-total (* flood-threshold max-in-interval)]
               {:result false :flood-request? true :current flood-total :total flood-total})))
         (remove-permit [_ id ts]
