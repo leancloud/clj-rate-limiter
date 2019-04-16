@@ -161,53 +161,50 @@
   RateLimiterFactory
   (create [this]
     (let [{:keys [interval min-difference max-in-interval namespace redis
-                  flood-threshold
+                  flood-threshold redis-trace-key-expire-secs
                   pool]
            :or {namespace "clj-rate"}} opts
           flood-cache (ttl-cache interval)
-          expire-secs (long (Math/ceil (/ interval 1000)))]
+          expire-secs (or redis-trace-key-expire-secs (long (Math/ceil (/ interval 1000))))]
       (reify RateLimiter
         (allow? [this id]
           (:result (permit? this id)))
         (permit? [_ id]
-          (when-not (and flood-threshold
-                         (cache/lookup @flood-cache (or id "")))
+          (if (and flood-threshold
+                   (cache/lookup @flood-cache (or id "")))
+            (let [flood-total (* flood-threshold max-in-interval)]
+              {:result false :flood-request? true :current flood-total :total flood-total})
             (let [id (or id "")
                   stamp (System/nanoTime)
                   now (System/currentTimeMillis)
                   key (format "%s-%s" namespace id)
-                  before (- now interval)]
-              (let [exec-ret (exec-batch redis
-                                         pool
-                                         key
-                                         stamp
-                                         before
-                                         now
-                                         expire-secs
-                                         min-difference)
-                    [total rs-total first-req last-req] (match-exec-ret exec-ret min-difference)
-                    too-many-in-interval? (>= total max-in-interval)
-                    flood-req? (and flood-threshold
-                                    too-many-in-interval?
-                                    (>= total
-                                        (* flood-threshold max-in-interval)))
-                    time-since-last-req (when (and min-difference last-req)
-                                          (- now (Long/valueOf ^String last-req)))]
-                (when flood-req?
-                  (swap! flood-cache
-                         assoc id true))
-                (let [ret ((complement pos?)
-                            (calc-result-in-millis now
-                                                   (when first-req
-                                                     (Long/valueOf ^String first-req))
-                                                   too-many-in-interval?
-                                                   time-since-last-req
-                                                   min-difference interval))]
-                  (if ret
-                    {:result ret :ts stamp
-                     :current total :total (+ total rs-total)}
-                    {:result ret :ts stamp
-                     :current total :total (+ total rs-total)}))))))
+                  before (- now interval)
+                  exec-ret (exec-batch redis
+                                       pool
+                                       key
+                                       stamp
+                                       before
+                                       now
+                                       expire-secs
+                                       min-difference)
+                  [total rs-total first-req last-req] (match-exec-ret exec-ret min-difference)
+                  too-many-in-interval? (>= total max-in-interval)
+                  flood-req? (when (and flood-threshold
+                                        too-many-in-interval?
+                                        (>= total
+                                            (* flood-threshold max-in-interval)))
+                               (swap! flood-cache assoc id true)
+                               true)
+                  time-since-last-req (when (and min-difference last-req)
+                                        (- now (Long/valueOf ^String last-req)))
+                  ret ((complement pos?)
+                        (calc-result-in-millis now
+                                               (when first-req
+                                                 (Long/valueOf ^String first-req))
+                                               too-many-in-interval?
+                                               time-since-last-req
+                                               min-difference interval))]
+              {:result ret :flood-request? flood-req? :ts stamp :current total :total (+ total rs-total)})))
         (remove-permit [_ id ts]
           (let [id (or id "")
                 key (format "%s-%s" namespace id)
