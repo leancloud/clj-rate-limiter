@@ -170,8 +170,8 @@
         (allow? [this id]
           (:result (permit? this id)))
         (permit? [_ id]
-          (when-not (and flood-threshold
-                         (cache/lookup @flood-cache (or id "")))
+          (if-not (and flood-threshold
+                       (cache/lookup @flood-cache (or id "")))
             (let [id (or id "")
                   stamp (System/nanoTime)
                   now (System/currentTimeMillis)
@@ -203,11 +203,9 @@
                                                    too-many-in-interval?
                                                    time-since-last-req
                                                    min-difference interval))]
-                  (if ret
-                    {:result ret :ts stamp
-                     :current total :total (+ total rs-total)}
-                    {:result ret :ts stamp
-                     :current total :total (+ total rs-total)}))))))
+                  {:result ret :ts stamp :current total :total (+ total rs-total)})))
+            (let [flood-total (* flood-threshold max-in-interval)]
+              {:result false :flood-request? true :current flood-total :total flood-total})))
         (remove-permit [_ id ts]
           (let [id (or id "")
                 key (format "%s-%s" namespace id)
