@@ -161,10 +161,10 @@
   RateLimiterFactory
   (create [this]
     (let [{:keys [interval min-difference max-in-interval namespace redis
-                  flood-threshold redis-trace-key-expire-secs
+                  flood-threshold flood-penalty-expire-millis redis-trace-key-expire-secs
                   pool]
            :or {namespace "clj-rate"}} opts
-          flood-cache (ttl-cache interval)
+          flood-cache (ttl-cache (or flood-penalty-expire-millis interval))
           expire-secs (or redis-trace-key-expire-secs (long (Math/ceil (/ interval 1000))))]
       (reify RateLimiter
         (allow? [this id]
