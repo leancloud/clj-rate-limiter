@@ -206,11 +206,11 @@
                                                min-difference interval))]
               {:result ret :flood-request? flood-req? :ts stamp :current total :total (+ total rs-total)})))
         (remove-permit [_ id ts]
-          (let [id (or id "")
-                key (format "%s-%s" namespace id)
-                now (System/currentTimeMillis)
-                before (- now interval)]
-            (when (and ts (pos? ts))
+          (when (and ts (pos? ts))
+            (let [id (or id "")
+                  key (format "%s-%s" namespace id)
+                  now (System/currentTimeMillis)
+                  before (- now interval)]
               (car/wcar {:spec redis
                          :pool pool}
                         (car/multi)
