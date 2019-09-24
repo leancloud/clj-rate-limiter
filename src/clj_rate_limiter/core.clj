@@ -101,15 +101,16 @@
                                        (ffirst user-set)
                                        too-many-in-interval?
                                        time-since-last-req
-                                       min-difference interval)]
+                                       min-difference
+                                       interval)]
                   (swap! storage update-in [key] (fn [s] (assoc s
                                                                 now false)))
                   (swap! timeouts assoc key (set-timeout (fn []
                                                            (swap! storage dissoc key)) (:interval opts)))
-                  (let [ret ((complement pos?) ret)]
-                    (if ret
-                      {:result ret :ts now :current current :total total}
-                      {:result ret :ts now :current current :total total})))))))
+                  {:result (not (pos? ret))
+                   :ts now
+                   :current current
+                   :total total})))))
         (remove-permit [_ id ts]
           (let [id (or id "")
                 key (format "%s-%s" namespace id)]
